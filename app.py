@@ -11,7 +11,7 @@ st.set_page_config(page_title="Análisis de Capilaridad y Canibalización", layo
 @st.cache_data
 def load_and_process_data():
     df = pd.read_excel(
-        r"C:\Users\hector.andagua\Downloads\Entel\GEO_CAPILARIDAD_JUNIO\data\Base_PDVs_lat_long_2.xlsx",
+        "data/Base_PDVs_lat_long_2.xlsx", # <-- RUTA CORREGIDA CON CARPETA
         dtype={'NUMERODEDOCUMENTO': str}
     )
     
