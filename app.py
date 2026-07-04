@@ -12,7 +12,7 @@ st.set_page_config(page_title="Análisis de Capilaridad", layout="wide")
 @st.cache_data
 def load_and_process_data():
     df = pd.read_excel(
-        data\Base_PDVs_lat_long_2.xlsx",
+        "data/Base_PDVs_lat_long_2.xlsx",
         dtype={'NUMERODEDOCUMENTO': str}
     )
     
