@@ -102,24 +102,49 @@ def get_matches_within_radius(dropped, new, radius_m):
             
             'Distancia_Metros': np.round(distances[i, j], 2)
         })
+        
+        matched_new_pdvs_count = new.iloc[j]['NUMERODEDOCUMENTO'].nunique()
+        
+        # --- SEPARAR CAÍDOS CON Y SIN REEMPLAZO ---
+        matched_i = np.unique(i)
+        unmatched_i = np.setdiff1d(np.arange(len(dropped)), matched_i)
+        
+        dropped_matched = dropped.iloc[matched_i].copy()
+        dropped_matched['Tipo_Mapa'] = 'PDV Caído (Con Reemplazo)' 
+        
+        dropped_unmatched = dropped.iloc[unmatched_i].copy()
+        dropped_unmatched['Tipo_Mapa'] = 'PDV Sin Reemplazo' 
+        
+        new_matched = new.iloc[np.unique(j)].copy()
+        new_matched['Tipo_Mapa'] = 'PDV Nuevo (Reemplazo)' 
+        
+        map_data = pd.concat([dropped_matched, dropped_unmatched, new_matched])
+        
     else:
         export_df = pd.DataFrame()
+        matched_new_pdvs_count = 0
         
-    matched_new_pdvs_count = new.iloc[j]['NUMERODEDOCUMENTO'].nunique()
-    
-    dropped_matched = dropped.iloc[np.unique(i)].copy()
-    dropped_matched['Tipo_Mapa'] = 'PDV Caído (Febrero)' 
-    new_matched = new.iloc[np.unique(j)].copy()
-    new_matched['Tipo_Mapa'] = 'PDV Nuevo (Reemplazo)' 
-    
-    map_data = pd.concat([dropped_matched, new_matched])
-    
+        # Si no hay cruces, TODOS los caídos son "Sin Reemplazo"
+        dropped_unmatched = dropped.copy()
+        dropped_unmatched['Tipo_Mapa'] = 'PDV Sin Reemplazo'
+        map_data = dropped_unmatched
+        
     map_data['PERIODO_CREACION'] = map_data['PERIODO_CREACION'].astype(str)
     map_data['PERIODO_ACTIVIDAD'] = map_data['PERIODO_ACTIVIDAD'].astype(str)
     
     # LÓGICA DE TAMAÑO Y ORDEN DE CAPAS
-    map_data['Tamaño_Punto'] = map_data['Tipo_Mapa'].apply(lambda x: 10 if x == 'PDV Caído (Febrero)' else 7)
-    map_data['Orden_Dibujo'] = map_data['Tipo_Mapa'].apply(lambda x: 0 if x == 'PDV Caído (Febrero)' else 1)
+    def assign_size(tipo):
+        if tipo == 'PDV Caído (Con Reemplazo)': return 15
+        elif tipo == 'PDV Sin Reemplazo': return 10
+        else: return 7
+        
+    def assign_order(tipo):
+        if tipo == 'PDV Sin Reemplazo': return 0 
+        elif tipo == 'PDV Caído (Con Reemplazo)': return 1 
+        else: return 2 
+
+    map_data['Tamaño_Punto'] = map_data['Tipo_Mapa'].apply(assign_size)
+    map_data['Orden_Dibujo'] = map_data['Tipo_Mapa'].apply(assign_order)
     map_data = map_data.sort_values(by='Orden_Dibujo')
     
     return matched_new_pdvs_count, map_data, export_df
@@ -164,6 +189,7 @@ with col_izq:
     
     recreaciones_count, map_data, df_detalle = get_matches_within_radius(dropped_locs, new_logins, radio)
     st.metric(label=f"Nuevos PDVs a {radio}m o menos", value=str(recreaciones_count))
+    st.caption("💡 *Tip de mapa: Haz clic en las etiquetas de la leyenda (a la derecha del mapa) para ocultar o mostrar tipos de PDVs específicos.*")
     
     st.markdown("---")
     st.subheader("🔍 Filtro de Enfoque")
@@ -199,9 +225,13 @@ with col_der:
     else:
         fig = px.scatter_mapbox(
             map_data, lat="LATITUD", lon="LONGITUD", color="Tipo_Mapa",
-            color_discrete_map={'PDV Caído (Febrero)': 'red', 'PDV Nuevo (Reemplazo)': 'green'},
+            color_discrete_map={
+                'PDV Caído (Con Reemplazo)': 'red', 
+                'PDV Sin Reemplazo': 'purple', 
+                'PDV Nuevo (Reemplazo)': 'green'
+            },
             size="Tamaño_Punto",
-            size_max=10,
+            size_max=15,
             hover_name="Tipo_Mapa",
             hover_data={
                 "LATITUD": False, "LONGITUD": False, "Tipo_Mapa": False, "Tamaño_Punto": False, "Orden_Dibujo": False,
@@ -209,17 +239,29 @@ with col_der:
                 "PERIODO_CREACION": True, "PERIODO_ACTIVIDAD": True, 
                 "FLAG_ACTIVO_ACTIV": True, "ACTIVIDAD": True  
             },
-            zoom=5 if not pdv_search else 10, 
+            zoom=5 if not pdv_search else 15, 
             mapbox_style="open-street-map"
         )
         fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
         st.plotly_chart(fig, use_container_width=True)
 
+        # --- NUEVO: RESUMEN DEL MAPA DEBAJO DE LA LEYENDA ---
+        st.markdown("##### 📍 Puntos detectados en el mapa actual:")
+        
+        count_rojo = len(map_data[map_data['Tipo_Mapa'] == 'PDV Caído (Con Reemplazo)'])
+        count_verde = len(map_data[map_data['Tipo_Mapa'] == 'PDV Nuevo (Reemplazo)'])
+        count_morado = len(map_data[map_data['Tipo_Mapa'] == 'PDV Sin Reemplazo'])
+        
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("🔴 Caídos (Reemplazados)", str(count_rojo))
+        mc2.metric("🟢 Nuevos (Reemplazos)", str(count_verde))
+        mc3.metric("🟣 Caídos (Sin Reemplazo)", str(count_morado))
+
 # ==========================================
 # 3. AUTOPSIA DE PDVS CAÍDOS (Deep Dive)
 # ==========================================
 st.markdown("---")
-st.title("📉 Analisis de PDVs Caídos")
+st.title("📉 Análisis de PDVs Caídos")
 st.markdown("Análisis histórico de los PDVs que eran productivos en Febrero y dejaron de vender hacia Junio.")
 
 mes_inicio = 202602
